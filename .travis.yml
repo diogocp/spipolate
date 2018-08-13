@@ -1,0 +1,12 @@
+language: cpp
+
+addons:
+  apt:
+    packages:
+      - libcgal-dev
+
+env:
+  - CMAKE_BUILD_TYPE=Release
+
+script:
+  - cd natural_neighbor && mkdir build && cd build && cmake .. && make
