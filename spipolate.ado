@@ -1,7 +1,7 @@
 program define spipolate
 	version 15
 	syntax newvarlist using/, [radius(numlist min=1 max=1 >=0 missingokay) ///
-		NEARest idw IDWpower(numlist min=1 max=1)]
+		NEARest idw IDWpower(numlist min=1 max=1) NATural]
 
 	if "`idwpower'" != "" local idw "idw"
 
@@ -13,6 +13,7 @@ program define spipolate
 
 	mata: my_spipolate = spipolate()
 	if "`nearest'" != "" mata: my_spipolate.method = "nearest"
+	if "`natural'" != "" mata: my_spipolate.method = "natural"
 	if "`radius'" != "" mata: my_spipolate.radius = `radius'
 	if "`idwpower'" != "" mata: my_spipolate.idwpower = `idwpower'
 
@@ -23,6 +24,7 @@ program define spipolate
 	mata: my_spipolate.load_known_data("`varlist'")
 	restore, preserve
 
+	// Generate new variables to store the interpolation results
 	foreach var in `varlist' {
 		quietly generate `var' = .
 	}
@@ -35,6 +37,8 @@ end
 
 
 version 15
+program spipolate_natural_neighbor, plugin
+
 set matastrict on
 mata:
 
@@ -51,6 +55,7 @@ class spipolate {
 		real colvector calc_distances()
 		real rowvector idw()
 		real rowvector nearest()
+		void natural()
 
 		string scalar coordsys
 		string scalar varlist
@@ -70,6 +75,10 @@ void spipolate::load_known_data(string scalar varlist) {
 	cx = st_global("r(sp_cx)")
 	cy = st_global("r(sp_cy)")
 	this.coordsys = st_global("r(sp_coord_sys)")
+
+	// Ignore points with missing coordinates
+	stata("quietly drop if missing(" + cx + ") | missing(" + cy + ")")
+
 	this.known_coords = st_data(., (cx, cy))
 	this.known_data = st_data(., varlist)
 	this.varlist = varlist
@@ -90,6 +99,8 @@ void spipolate::interpolate() {
 		for (i = 1; i <= rows(points); i++) {
 			output[i, .] = nearest(points[i, .])
 		}
+	} else if(method == "natural") {
+		natural()
 	} else {
 		_error(3300, "method not implemented")
 	}
@@ -134,12 +145,21 @@ real rowvector spipolate::nearest(real rowvector x) {
 	return(colmeans(known_data, d :== min(d)))
 }
 
+void spipolate::natural() {
+	string scalar st_known_data
+
+	st_known_data = st_tempname()
+	st_matrix(st_known_data, (known_coords, known_data))
+
+	stata("plugin call spipolate_natural_neighbor latitude longitude " +
+		varlist + ", " + st_known_data)
+}
+
 /* Returns a colvector with the distances from x to each of the
  * points in known_coords.
  */
 real colvector spipolate::calc_distances(real rowvector x) {
-	real colvector d, toofar
-	real scalar i
+	real colvector d
 
 	if (coordsys == "latlong") {
 		d = haversine_distance(x, known_coords)
