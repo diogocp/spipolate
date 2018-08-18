@@ -1,0 +1,50 @@
+image: Visual Studio 2017
+
+platform:
+  - x86
+  - x64
+
+configuration: Release
+
+environment:
+  CGAL_VERSION: 4.12
+
+cache:
+  - C:\Tools\vcpkg\installed
+  - 'C:\Libraries\CGAL-%CGAL_VERSION%'
+
+install:
+  - pushd C:\Tools\vcpkg && (git pull --quiet & popd)
+  - vcpkg install cgal:%platform%-windows-static
+  # The CGAL package in vcpkg is not working properly for static builds
+  # Download a CGAL source distribution and use it in header-only mode
+  - ps: |
+      if (-Not (Test-Path "C:\Libraries\CGAL-${Env:CGAL_VERSION}")) {
+          pushd "C:\Libraries"
+          Start-FileDownload "https://github.com/CGAL/cgal/releases/download/releases/CGAL-${Env:CGAL_VERSION}/CGAL-${Env:CGAL_VERSION}.zip"
+          7z x "CGAL-${Env:CGAL_VERSION}.zip"
+          popd
+      }
+
+build_script:
+  - cd natural_neighbor && mkdir build && cd build
+  - call "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat" %platform%
+  - cmake .. -DCMAKE_BUILD_TYPE=%configuration% -G Ninja -DCMAKE_MAKE_PROGRAM="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -DCMAKE_TOOLCHAIN_FILE="C:\Tools\vcpkg\scripts\buildsystems\vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=%platform%-windows-static -DCGAL_DIR=C:\Libraries\CGAL-%CGAL_VERSION%
+  - cmake --build .
+
+after_build:
+  - ps: |
+      $stata_platform = switch ($Env:platform) {
+          'x86' { 'WIN32' }
+          'x64' { 'WIN64' }
+      }
+      Push-AppveyorArtifact spipolate_natural_neighbor.plugin -FileName spipolate_natural_neighbor.${stata_platform}.plugin
+
+deploy:
+  - provider: GitHub
+    auth_token:
+      secure: OiHnkO92N6ayvnR2Jv4BfOgdTzBheDGGzRP2UpgN9aUFMibiJqQLpxRxQFL2xJli
+    artifact: /.*/
+    draft: true
+    on:
+      APPVEYOR_REPO_TAG: true
