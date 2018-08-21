@@ -1,12 +1,44 @@
 language: cpp
 
+os:
+  - linux
+  - osx
+
+env:
+  - CGAL_VERSION=4.12
+
 addons:
   apt:
     packages:
       - libcgal-dev
 
-env:
-  - CMAKE_BUILD_TYPE=Release
+before_install:
+  # Download a source tarball of CGAL to use in header-only mode
+  - curl -L "https://github.com/CGAL/cgal/releases/download/releases/CGAL-${CGAL_VERSION}/CGAL-${CGAL_VERSION}.tar.xz" | tar xJ
 
 script:
-  - cd natural_neighbor && mkdir build && cd build && cmake .. && make
+  - cd natural_neighbor && mkdir build && cd build
+  - cmake .. -DCMAKE_BUILD_TYPE=Release -DCGAL_DIR="../CGAL-${CGAL_VERSION}"
+  - cmake --build .
+
+after_success:
+  - case $TRAVIS_OS_NAME in linux) STATA_PLATFORM="LINUX64";; osx) STATA_PLATFORM="MACINTEL64";; esac
+  - mv spipolate_natural_neighbor.plugin spipolate_natural_neighbor.${STATA_PLATFORM}.plugin
+
+deploy:
+  - provider: releases
+    api_key:
+      secure: "izJbDdjhkHpRzF6/2D9jT67p8hq43/+uGD2SfA4hJfpQvdp5Kf2XjJ1o62hnVJbUVybXJXRkyGHaLZLi/iRBRoKDsRt6UHTl6xpiK4wcSapiBLJPs/RdvA2OltbaOzI6/OSm9HoSMRRGcEnE6f1nVnxsR9P2cDv8lv6ouokuR/depdlnNis/c3JcqVm4TT+9WKjxHSmPz3QPgr6bS8AQUInm8CeAoJloRM0qIrSM1SNR9/5bCxe60j0wsLd7ow4Zt9dkc31IO57PxOa1GA6ICcTSFQmmtydkfEfrHV88GBYWmCmIqZ9YCwiTbMrEarF+mXnkKEAQR6QxvLa7miZM4J35qUGH7N/XS1XqKmEESrBYaQK64tXtriS/3gsS3sK93zLb+yBRm2WRb7G07+3i2OVfzJSw8MzP6K8Ga5JCuuTAwt759hZew/N7KYqWGBu4nYOMseBW6LpbtQh4HTNH22oI6gya/1aepjTirxgrWCKWrb/lhNAf1xWQiypui+QnOv4n/jLf/rb9a/yTcgxKP/tQ5OB0eRGyMpNxqZ8VQ2qrkiT10XdHMhemu25FI10/+Sn26yNT7l/Kwf7Lx9zj9/K5JU648GlTB8S9nO7bCSHIxdo6eL4bvU+HfpUvL10EOXRlOhv9mAUEk9+W6jrtGvGnQAc+Akbx01howXqTUYU="
+    file_glob: true
+    file: "*.plugin"
+    draft: true
+    skip_cleanup: true
+    name: $TRAVIS_TAG
+    tag_name: $TRAVIS_TAG
+    on:
+      tags: true
+
+notifications:
+  email:
+    on_success: never
+    on_failure: change
